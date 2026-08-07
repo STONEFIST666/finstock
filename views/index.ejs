@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FinStock — Real-time Stock Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+
+  <%
+    // ---------- Presentation-only formatting helpers (no business logic) ----------
+    const hasValue = (v) => v !== null && v !== undefined && String(v).trim() !== "" && !isNaN(parseFloat(v));
+    const orNa = (v) => (v === null || v === undefined || String(v).trim() === "") ? "N/A" : v;
+
+    // Market cap: 1.25T / 850.12B / 450M instead of long numbers
+    const formatMarketCap = (v) => {
+      if (!hasValue(v)) return "N/A";
+      const n = parseFloat(v);
+      if (n >= 1e12) return "$" + (n / 1e12).toFixed(2) + "T";
+      if (n >= 1e9) return "$" + (n / 1e9).toFixed(2) + "B";
+      if (n >= 1e6) return "$" + (n / 1e6).toFixed(2) + "M";
+      return "$" + n.toLocaleString("en-US");
+    };
+
+    const formatCurrency = (v) => hasValue(v) ? "$" + parseFloat(v).toFixed(2) : "N/A";
+    const formatRatio = (v) => hasValue(v) ? parseFloat(v).toFixed(2) : "N/A";
+    // Alpha Vantage returns ROE / profit margin / dividend yield as decimal fractions (e.g. 0.1452)
+    const formatPercent = (v) => hasValue(v) ? (parseFloat(v) * 100).toFixed(2) + "%" : "N/A";
+  %>
+
+  <!-- ====== Hero ====== -->
+  <header class="hero">
+    <div class="hero__bg"></div>
+    <div class="container">
+      <nav class="nav">
+        <div class="nav__brand">
+          <span class="nav__logo">Fin</span><span class="nav__logo nav__logo--accent">Stock</span>
+        </div>
+        <div class="nav__tagline">Real-time Market Data</div>
+      </nav>
+      <div class="hero__content">
+        <h1 class="hero__title">
+          Track the stocks<br />
+          <span class="hero__title--gradient">that matter most</span>
+        </h1>
+        <p class="hero__subtitle">Get instant access to real-time stock prices, opening values, daily highs and lows — all in one place.</p>
+      </div>
+
+      <!-- ====== Search ====== -->
+      <form class="search" action="/search" method="POST">
+        <div class="search__wrapper">
+          <span class="search__icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"/>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+          </span>
+          <input
+            type="text"
+            id="stock-symbol"
+            name="stock-symbol"
+            class="search__input"
+            placeholder="Search symbol… e.g. AAPL, TSLA, GOOGL"
+            required
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <button type="submit" class="search__button">
+            <span class="search__button-text">Search</span>
+            <svg class="search__button-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="5" y1="12" x2="19" y2="12"/>
+              <polyline points="12 5 19 12 12 19"/>
+            </svg>
+          </button>
+        </div>
+      </form>
+
+      <div class="hero__hints">
+        <span class="hero__hints-label">Popular:</span>
+        <span class="hero__hint">AAPL</span>
+        <span class="hero__hint">TSLA</span>
+        <span class="hero__hint">GOOGL</span>
+        <span class="hero__hint">MSFT</span>
+        <span class="hero__hint">AMZN</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ====== Main ====== -->
+  <main class="main">
+    <div class="container">
+
+      <!-- ====== Error ====== -->
+      <% if (error) { %>
+        <div class="error-card" role="alert">
+          <span class="error-card__icon" aria-hidden="true">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+          </span>
+          <div class="error-card__content">
+            <p class="error-card__title">Unable to fetch stock data</p>
+            <p class="error-card__message"><%= error %></p>
+          </div>
+        </div>
+      <% } %>
+
+      <!-- ====== Stock Card ====== -->
+      <% if (stock) { %>
+        <section class="stock-card" aria-label="Stock information for <%= stock.symbol %>">
+          <header class="stock-card__header">
+            <div class="stock-card__symbol-wrapper">
+              <span class="stock-card__symbol-icon"><%= stock.symbol.charAt(0) %></span>
+              <div>
+                <h2 class="stock-card__symbol"><%= stock.symbol %></h2>
+                <p class="stock-card__exchange">NASDAQ</p>
+              </div>
+            </div>
+            <div class="stock-card__price-block">
+              <p class="stock-card__price" aria-label="Current price: <%= stock.price %>">$<%= stock.price %></p>
+              <% if (stock.change && stock.changePercent) { %>
+                <p class="stock-card__change <%= parseFloat(stock.change) >= 0 ? 'stock-card__change--up' : 'stock-card__change--down' %>"><span class="stock-card__change-arrow"><%= parseFloat(stock.change) >= 0 ? '▲' : '▼' %></span>
+                  <%= stock.change %> (<%= stock.changePercent %>)
+                </p>
+              <% } %>
+            </div>
+          </header>
+          <div class="stock-card__body">
+            <dl class="stock-metrics">
+              <div class="stock-metrics__item">
+                <dt class="stock-metrics__label">Open</dt>
+                <dd class="stock-metrics__value">$<%= stock.open %></dd>
+              </div>
+              <div class="stock-metrics__item">
+                <dt class="stock-metrics__label">High</dt>
+                <dd class="stock-metrics__value stock-metrics__value--up">$<%= stock.high %></dd>
+              </div>
+              <div class="stock-metrics__item">
+                <dt class="stock-metrics__label">Low</dt>
+                <dd class="stock-metrics__value stock-metrics__value--down">$<%= stock.low %></dd>
+              </div>
+              <div class="stock-metrics__item">
+                <dt class="stock-metrics__label">Previous Close</dt>
+                <dd class="stock-metrics__value">$<%= stock.previousClose %></dd>
+              </div>
+              <div class="stock-metrics__item stock-metrics__item--full">
+                <dt class="stock-metrics__label">Volume</dt>
+                <dd class="stock-metrics__value stock-metrics__value--mono"><%= new Intl.NumberFormat('en-US').format(stock.volume) %></dd>
+              </div>
+            </dl>
+          </div>
+          <footer class="stock-card__footer">
+            <p class="stock-card__timestamp">Data as of the latest trading session</p>
+          </footer>
+        </section>
+
+        <!-- ====== Company Overview Card ====== -->
+        <% if (company) {
+          const metaParts = [orNa(company.sector), orNa(company.industry)].filter(s => s !== "N/A");
+        %>
+          <section class="company-card" aria-label="Company overview for <%= orNa(company.name) %>">
+            <header class="company-card__header">
+              <div class="company-card__title-wrapper">
+                <h2 class="company-card__name"><%= orNa(company.name) %></h2>
+                <p class="company-card__subtitle"><%= metaParts.length ? metaParts.join(" • ") : "N/A" %></p>
+              </div>
+              <span class="company-card__badge">Company Overview</span>
+            </header>
+
+            <div class="company-card__body">
+              <div class="company-description" id="company-description-<%= stock.symbol %>">
+                <h3 class="company-description__heading">About Company</h3>
+                <% if (company.description && company.description.length > 180) { %>
+                  <p class="company-description__text" id="company-description-text-collapsed"><%= company.description.slice(0, 180).trimEnd() %>…</p>
+                  <p class="company-description__text company-description__text--expanded" id="company-description-text-full"><%= company.description %></p>
+                  <button
+                    type="button"
+                    class="company-description__toggle"
+                    id="company-description-toggle"
+                    aria-expanded="false"
+                    aria-controls="company-description-text-full"
+                  >
+                    <span class="company-description__toggle-more">Read More</span>
+                    <span class="company-description__toggle-less">Read Less</span>
+                    <svg class="company-description__toggle-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                  </button>
+                <% } else { %>
+                  <p class="company-description__text company-description__text--full"><%= orNa(company.description) %></p>
+                <% } %>
+              </div>
+
+              <dl class="company-metrics">
+                <div class="company-metrics__item">
+                  <dt class="company-metrics__label">Market Cap</dt>
+                  <dd class="company-metrics__value"><%= formatMarketCap(company.marketCap) %></dd>
+                </div>
+                <div class="company-metrics__item">
+                  <dt class="company-metrics__label">P/E Ratio</dt>
+                  <dd class="company-metrics__value"><%= formatRatio(company.peRatio) %></dd>
+                </div>
+                <div class="company-metrics__item">
+                  <dt class="company-metrics__label">EPS</dt>
+                  <dd class="company-metrics__value"><%= formatCurrency(company.eps) %></dd>
+                </div>
+                <div class="company-metrics__item">
+                  <dt class="company-metrics__label">ROE</dt>
+                  <dd class="company-metrics__value"><%= formatPercent(company.returnOnEquity) %></dd>
+                </div>
+                <div class="company-metrics__item">
+                  <dt class="company-metrics__label">Profit Margin</dt>
+                  <dd class="company-metrics__value"><%= formatPercent(company.profitMargin) %></dd>
+                </div>
+                <div class="company-metrics__item">
+                  <dt class="company-metrics__label">Dividend Yield</dt>
+                  <dd class="company-metrics__value"><%= formatPercent(company.dividendYield) %></dd>
+                </div>
+              </dl>
+            </div>
+          </section>
+        <% } %>
+
+      <% } else { %>
+        <div class="empty-state">
+          <span class="empty-state__graphic" aria-hidden="true">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+            </svg>
+          </span>
+          <h3 class="empty-state__title">No data yet</h3>
+          <p class="empty-state__text">Enter a stock symbol above to view real-time market data.</p>
+        </div>
+      <% } %>
+
+    </div>
+  </main>
+
+  <!-- ====== Footer ====== -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer__grid">
+        <div class="footer__brand">
+          <span class="footer__logo">FinStock</span>
+          <p class="footer__description">Real-time stock market data at your fingertips.</p>
+        </div>
+        <div class="footer__links">
+          <div class="footer__col">
+            <h4 class="footer__heading">Data</h4>
+            <ul class="footer__list">
+              <li><a href="#" class="footer__link">API</a></li>
+              <li><a href="#" class="footer__link">Documentation</a></li>
+              <li><a href="#" class="footer__link">Pricing</a></li>
+            </ul>
+          </div>
+          <div class="footer__col">
+            <h4 class="footer__heading">Company</h4>
+            <ul class="footer__list">
+              <li><a href="#" class="footer__link">About</a></li>
+              <li><a href="#" class="footer__link">Privacy</a></li>
+              <li><a href="#" class="footer__link">Terms</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="footer__bottom">
+        <p class="footer__copyright">&copy; 2026 FinStock. Data delayed by at least 15 minutes.</p>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Read More / Read Less toggle (presentation only) -->
+  <script>
+    (function () {
+      var toggles = document.querySelectorAll(".company-description__toggle");
+      toggles.forEach(function (button) {
+        button.addEventListener("click", function () {
+          var expanded = button.getAttribute("aria-expanded") === "true";
+          button.setAttribute("aria-expanded", String(!expanded));
+          button.parentElement.classList.toggle("company-description--expanded", !expanded);
+        });
+      });
+    })();
+  </script>
+
+</body>
+</html>
