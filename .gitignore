@@ -1,0 +1,8 @@
+# Dependencies
+node_modules/
+
+# Environment variables — NEVER commit your API keys
+.env
+
+# Logs
+*.log

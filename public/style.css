@@ -333,6 +333,50 @@ ul {
   transform: translateX(3px);
 }
 
+
+/* ----- Search Feedback + Loading (Sprint 7) ----- */
+.search__feedback {
+  margin-top: var(--space-3);
+  text-align: center;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #fecaca;
+}
+
+.search__button:disabled {
+  cursor: default;
+  opacity: 0.75;
+  transform: none;
+  box-shadow: none;
+}
+
+.search__input:disabled {
+  opacity: 0.7;
+}
+
+.search__spinner {
+  display: none;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: spin 700ms linear infinite;
+}
+
+.search__button.is-loading .search__button-text,
+.search__button.is-loading .search__button-arrow {
+  display: none;
+}
+
+.search__button.is-loading .search__spinner {
+  display: inline-block;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 @media (min-width: 480px) {
   .search__button-text {
     display: inline;
@@ -703,12 +747,14 @@ ul {
   overflow-wrap: break-word;
   display: -webkit-box;
   -webkit-box-orient: vertical;
+  line-clamp: 4;
   -webkit-line-clamp: 4;
   overflow: hidden;
 }
 
 .company-description__text--full {
   display: block;
+  line-clamp: unset;
   -webkit-line-clamp: unset;
 }
 
@@ -836,6 +882,181 @@ ul {
 
   .company-metrics__value {
     font-size: 1.2rem;
+  }
+}
+
+
+/* ==========================================================
+   PRICE HISTORY CHART CARD
+   ========================================================== */
+.chart-card {
+  margin-top: var(--space-6);
+  background: var(--color-white);
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+  transition: box-shadow var(--transition-base);
+  animation: fadeInUp 400ms ease-out 150ms backwards;
+}
+
+.chart-card:hover {
+  box-shadow: var(--shadow-hover);
+}
+
+.chart-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--color-gray-100);
+}
+
+.chart-card__title-wrapper {
+  min-width: 0;
+}
+
+.chart-card__title {
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--color-gray-900);
+  line-height: 1.3;
+}
+
+.chart-card__subtitle {
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-gray-400);
+}
+
+.chart-card__badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-3);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--color-blue-700);
+  background: var(--color-blue-50);
+  border: 1px solid var(--color-blue-100);
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+}
+
+.chart-card__body {
+  padding: var(--space-5) var(--space-6) var(--space-6);
+}
+
+.chart-card__canvas-wrap {
+  position: relative;
+  height: 280px;
+}
+
+.chart-card__caption {
+  margin-top: var(--space-3);
+  font-size: 0.75rem;
+  color: var(--color-gray-400);
+  text-align: center;
+}
+
+/* Time-range toolbar (1M / 3M / 6M / ALL) */
+.chart-card__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-6);
+  border-bottom: 1px solid var(--color-gray-100);
+  background: var(--color-gray-50);
+}
+
+.chart-range {
+  padding: var(--space-1) var(--space-4);
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-full);
+  background: var(--color-white);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--color-gray-500);
+  cursor: pointer;
+  transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.chart-range:hover {
+  color: var(--color-blue-700);
+  border-color: var(--color-blue-200);
+  background: var(--color-blue-50);
+}
+
+.chart-range.is-active {
+  color: var(--color-white);
+  background: var(--color-blue-600);
+  border-color: var(--color-blue-600);
+  box-shadow: 0 1px 4px rgba(37, 99, 235, 0.35);
+}
+
+.chart-range:focus-visible {
+  outline: 2px solid var(--color-blue-500);
+  outline-offset: 2px;
+}
+
+.chart-card--empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-10) var(--space-6);
+  text-align: center;
+}
+
+.chart-card__empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-md);
+  background: var(--color-gray-100);
+  color: var(--color-gray-300);
+}
+
+.chart-card__empty-text {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--color-gray-500);
+}
+
+@media (min-width: 640px) {
+  .chart-card {
+    margin-top: var(--space-8);
+  }
+
+  .chart-card__header {
+    padding: var(--space-6) var(--space-8);
+  }
+
+  .chart-card__title {
+    font-size: 1.1rem;
+  }
+
+  .chart-card__body {
+    padding: var(--space-6) var(--space-8) var(--space-8);
+  }
+
+  .chart-card__toolbar {
+    padding: var(--space-3) var(--space-8);
+  }
+
+  .chart-card__canvas-wrap {
+    height: 340px;
   }
 }
 
