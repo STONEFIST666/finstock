@@ -238,7 +238,7 @@
             </svg>
           </span>
           <div class="error-card__content">
-            <p class="error-card__title"><%= errorTitle || (stock ? "Some data unavailable" : "Unable to fetch stock data") %></p>
+            <p class="error-card__title"><%= typeof errorTitle !== "undefined" && errorTitle ? errorTitle : (stock ? "Some data unavailable" : "Unable to fetch stock data") %></p>
             <p class="error-card__message"><%= error %></p>
           </div>
         </div>
