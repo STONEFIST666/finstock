@@ -1,33 +1,29 @@
 import express from "express";
 import bodyParser from "body-parser";
 import dotenv from "dotenv";
-import { getGlobalQuote, getCompanyOverview, getTimeSeriesDaily } from "./services/alphaVantage.js";
+import { getQuoteSnapshot, getCompanyOverview, getTimeSeriesDaily } from "./services/alphaVantage.js";
+import { normalizeSymbol, SYMBOL_FORMAT } from "./services/symbols.js";
+import { toStockQuote } from "./services/quotes.js";
+import apiQuoteRouter from "./routes/apiQuote.js";
+import apiNewsRouter from "./routes/apiNews.js";
+import { resolvePort } from "./services/config.js";
 dotenv.config();
 
 console.log("ALPHA_VANTAGE_API_KEY loaded:", Boolean(process.env.ALPHA_VANTAGE_API_KEY));
-console.log("ALPHA_VANTAGE_API_KEY length:", process.env.ALPHA_VANTAGE_API_KEY?.length);
 
 const app = express();
 app.set("view engine", "ejs");
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static("public"));
-const port = 3000;
+app.use("/api/quote", apiQuoteRouter);
+app.use("/api/news", apiNewsRouter);
+const port = resolvePort(process.env.PORT);
 
 app.get("/", (req, res) =>{
   res.render("index.ejs", { stock: null, company: null, historicalData: [], error: null });
 });
 
-// ---- Sprint 7: input normalization + duplicate-request guard ----
-// Normalize a raw symbol: trim surrounding whitespace and uppercase, so
-// "  aapl  " becomes "AAPL". Runs on every request before any API call.
-const normalizeSymbol = (raw) => String(raw ?? "").trim().toUpperCase();
-
-// Light format check — deliberately permissive (dots for share classes like
-// BRK.B, hyphens and ^ for some index symbols) so real symbols are never
-// rejected, while obviously-invalid input is stopped before it wastes an
-// Alpha Vantage request.
-const SYMBOL_FORMAT = /^[A-Z0-9.\-^]{1,10}$/;
-
+// ---- Sprint 7: duplicate-request guard ----
 // In-memory guard against rapid duplicate submissions. The frontend disables
 // the submit button; this is the backend safety net. An identical normalized
 // symbol resubmitted within this window is dropped before any API call.
@@ -80,12 +76,12 @@ app.post("/search", async (req, res) => {
     }
 
     try {
-        const quoteResponse = await getGlobalQuote(stockSymbol);
+        const quoteSnapshot = await getQuoteSnapshot(stockSymbol);
 
-        if (quoteResponse?.error) {
-            const errorMessage = quoteResponse.error.includes("Invalid")
+        if (quoteSnapshot?.error) {
+            const errorMessage = quoteSnapshot.error.includes("Invalid")
                 ? "Invalid stock symbol."
-                : quoteResponse.error;
+                : quoteSnapshot.error;
 
             return res.render("index.ejs", {
                 stock: null,
@@ -95,9 +91,9 @@ app.post("/search", async (req, res) => {
             });
         }
 
-        const quote = quoteResponse["Global Quote"];
+        const stock = toStockQuote(quoteSnapshot.data);
 
-        if (!quote || !quote["01. symbol"]) {
+        if (!stock) {
             return res.render("index.ejs", {
                 stock: null,
                 company: null,
@@ -141,23 +137,12 @@ app.post("/search", async (req, res) => {
             historicalData = historicalResponse;
         }
 
-        const stock = {
-            symbol: quote["01. symbol"],
-            open: quote["02. open"],
-            high: quote["03. high"],
-            low: quote["04. low"],
-            price: quote["05. price"],
-            volume: quote["06. volume"],
-            previousClose: quote["08. previous close"],
-            change: quote["09. change"],
-            changePercent: quote["10. change percent"],
-            latestTradingDay: quote["07. latest trading day"]
-        };
-
         res.render("index.ejs", {
             stock,
             company: companyInfo,
             historicalData,
+            quoteUpdatedAt: new Date(quoteSnapshot.fetchedAt).toISOString(),
+            quoteCached: quoteSnapshot.fromCache,
             error: apiErrors.length ? apiErrors.join(" | ") : null
         });
 

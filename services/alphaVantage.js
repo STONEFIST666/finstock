@@ -1,8 +1,18 @@
 
 
 import axios from "axios";
+import { createTtlCache } from "./cache.js";
+
 let nextAllowedRequestTime = 0;
 const ALPHA_VANTAGE_MIN_INTERVAL_MS = 1200;
+
+// Quotes move constantly, but a 60-second window still absorbs refresh spam
+// while keeping the displayed price fresh enough for this app.
+const quoteCache = createTtlCache({ ttlMs: 60 * 1000, maxEntries: 100 });
+
+// A daily series only changes once per trading day, so 12 hours is safe and
+// saves two API calls whenever the same symbol is searched again.
+const historyCache = createTtlCache({ ttlMs: 12 * 60 * 60 * 1000, maxEntries: 40 });
 
 // ---- Company Overview cache ----
 // OVERVIEW data (name, description, sector, financial ratios) changes rarely —
@@ -50,7 +60,7 @@ function normalizeErrorText(text) {
 // Alpha Vantage echoes the API key back inside some error messages (e.g. the
 // daily rate-limit text: "We have detected your API key as ..."). Never let
 // the raw key reach the console, logs, or the rendered page.
-function sanitizeErrorText(text) {
+export function sanitizeErrorText(text) {
     const apiKey = process.env.ALPHA_VANTAGE_API_KEY;
     if (typeof text !== "string" || !apiKey) {
         return text;
@@ -102,11 +112,19 @@ function extractApiError(responseData) {
     return null;
 }
 
-export async function getGlobalQuote(stockSymbol) {
+export async function getQuoteSnapshot(stockSymbol) {
+    const symbol = String(stockSymbol || "").toUpperCase().trim();
+
+    const cached = quoteCache.get(symbol);
+    if (cached) {
+        console.log("GLOBAL_QUOTE cache hit:", symbol);
+        return { data: cached.value, fetchedAt: cached.fetchedAt, fromCache: true };
+    }
+
     const apiKey = process.env.ALPHA_VANTAGE_API_KEY;
     const params = {
         function: "GLOBAL_QUOTE",
-        symbol: stockSymbol,
+        symbol,
         apikey: apiKey
     };
 
@@ -140,7 +158,14 @@ export async function getGlobalQuote(stockSymbol) {
         return { error: "Missing Global Quote data from Alpha Vantage." };
     }
 
-    return response.data;
+    const entry = quoteCache.set(symbol, response.data);
+    console.log("GLOBAL_QUOTE cached:", symbol);
+    return { data: entry.value, fetchedAt: entry.fetchedAt, fromCache: false };
+}
+
+export async function getGlobalQuote(stockSymbol) {
+    const result = await getQuoteSnapshot(stockSymbol);
+    return result.error ? { error: result.error } : result.data;
 }
 
 export async function getCompanyOverview(stockSymbol) {
@@ -221,10 +246,29 @@ export async function getCompanyOverview(stockSymbol) {
 }
 
 export async function getTimeSeriesDaily(stockSymbol) {
+    const symbol = String(stockSymbol || "").toUpperCase().trim();
+
+    const cached = historyCache.get(symbol);
+    if (cached) {
+        console.log("TIME_SERIES_DAILY cache hit:", symbol);
+        return cached.value;
+    }
+
+    // Price history changes once a day, so serving yesterday's copy beats
+    // showing nothing when the free-tier quota is exhausted.
+    const serveStaleOrFail = (reason) => {
+        const stale = historyCache.get(symbol, { allowStale: true });
+        if (stale) {
+            console.warn("TIME_SERIES_DAILY serving stale cached data after:", reason);
+            return stale.value;
+        }
+        return { error: reason };
+    };
+
     const apiKey = process.env.ALPHA_VANTAGE_API_KEY;
     const params = {
         function: "TIME_SERIES_DAILY",
-        symbol: stockSymbol,
+        symbol,
         apikey: apiKey
     };
 
@@ -235,19 +279,19 @@ export async function getTimeSeriesDaily(stockSymbol) {
         response = await axios.get("https://www.alphavantage.co/query", { params, timeout: 15000 });
     } catch (error) {
         console.error("TIME_SERIES_DAILY request failed:", error.message);
-        return { error: `Alpha Vantage request failed: ${error.message}` };
+        return serveStaleOrFail(`Alpha Vantage request failed: ${error.message}`);
     }
     console.log("TIME_SERIES_DAILY response status:", response.status);
 
     const apiError = extractApiError(response.data);
     if (apiError) {
         console.warn("TIME_SERIES_DAILY API warning/error:", apiError);
-        return { error: apiError };
+        return serveStaleOrFail(apiError);
     }
 
     const timeSeries = response.data["Time Series (Daily)"];
     if (!timeSeries || typeof timeSeries !== "object") {
-        return { error: "Missing daily time series data from Alpha Vantage." };
+        return serveStaleOrFail("Missing daily time series data from Alpha Vantage.");
     }
 
     const historicalData = Object.entries(timeSeries)
@@ -262,6 +306,7 @@ export async function getTimeSeriesDaily(stockSymbol) {
         // Drop any malformed record so a NaN value can never corrupt the future chart.
         .filter((record) => Number.isFinite(record.close));
 
-    console.log("TIME_SERIES_DAILY historicalData length:", historicalData.length);
+    historyCache.set(symbol, historicalData);
+    console.log("TIME_SERIES_DAILY cached:", symbol, "records:", historicalData.length);
     return historicalData;
 }
